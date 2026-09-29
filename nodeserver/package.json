@@ -26,7 +26,6 @@
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongobd": "^0.0.1-security.0",
     "mongodb": "^6.15.0",
     "mongoose": "^8.13.2",
     "multer": "^2.3.0",
