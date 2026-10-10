@@ -13,7 +13,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const otpStore = {}; // { email: { code, expiresAt } }
+const otpStore = new Map(); // email -> { code, expiresAt, verified? }
 
 function generateOTP() {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -61,7 +61,7 @@ export const sendOtp = async (req, res) => {
         }
 
         const code = generateOTP();
-        otpStore[email] = { code, expiresAt: Date.now() + 10 * 60 * 1000 }; // 10 min
+        otpStore.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 }); // 10 min
         try {
             if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
                 console.error('SMTP credentials missing');
@@ -84,11 +84,11 @@ export const sendOtp = async (req, res) => {
 export const verifyOtp = (req, res) => {
     const { email, code } = req.body;
     if (!email || !code) return res.status(400).json({ message: "Email and code required" });
-    const record = otpStore[email];
+    const record = otpStore.get(email);
     if (!record || record.code !== code || Date.now() > record.expiresAt) {
         return res.status(400).json({ message: "Invalid or expired OTP" });
     }
-    otpStore[email].verified = true;
+    record.verified = true;
     res.json({ message: "OTP verified" });
 };
 
@@ -97,7 +97,8 @@ export const signup = async(req,res,next) =>{
     const { username, email, password, otp } = req.body;
     try {
         // Check OTP
-        if (!otpStore[email] || !otpStore[email].verified) {
+        const otpRecord = otpStore.get(email);
+        if (!otpRecord || !otpRecord.verified) {
             console.log(`[signup] OTP not verified for ${email}`);
             return res.status(400).json({ message: "Email not verified. Please verify OTP." });
         }
@@ -114,7 +115,7 @@ export const signup = async(req,res,next) =>{
         const hashedPassword = bcryptjs.hashSync(password,10);
         const newUser = new User ({username,email,password:hashedPassword});
         await newUser.save();
-        delete otpStore[email];
+        otpStore.delete(email);
         res.status(201).json("User created successfully")
     } catch (error) {
         // Handle duplicate key error (in case of race condition)
@@ -150,7 +151,7 @@ export const signin = async(req,res,next) =>{
 export const resetPassword = async (req, res) => {
     const { email, otp, newPassword } = req.body;
     if (!email || !otp || !newPassword) return res.status(400).json({ message: "All fields required" });
-    const record = otpStore[email];
+    const record = otpStore.get(email);
     if (!record || record.code !== otp || Date.now() > record.expiresAt) {
         return res.status(400).json({ message: "Invalid or expired OTP" });
     }
@@ -158,7 +159,6 @@ export const resetPassword = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     user.password = bcryptjs.hashSync(newPassword, 10);
     await user.save();
-    delete otpStore[email];
+    otpStore.delete(email);
     res.json({ message: "Password reset successful" });
 };
-
